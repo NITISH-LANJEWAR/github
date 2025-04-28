@@ -1,0 +1,110 @@
+
+
+name: Promote
+
+env:
+  # These env variables are used for github action runner agents
+  OPENSHIFT_SERVER: ${{ secrets.OPENSHIFT_SERVER }}
+  OPENSHIFT_TOKEN: ${{ secrets.OPENSHIFT_TOKEN }}
+  OPENSHIFT_NAMESPACE: "github-arc"
+on:
+  # https://docs.github.com/en/actions/reference/events-that-trigger-workflows
+  push:
+    branches:
+        - dev
+  workflow_dispatch:
+    inputs:
+      APP_NAME:
+        description: 'APP Name'
+        required: true
+        default: cash-out-management-eapi
+      ARTIFACTORY_PROJECT:
+        description: 'Image Registry project name'
+        required: true
+        default: 'exp-layer-zm-dev'
+        options:
+        - exp-layer-zm-dev
+        - exp-layer-zm-uat
+      ENVIRONMENT:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'dev'
+        options:
+        - dev
+        - uat
+      OCP_CLUSTER:
+        description: 'Deployment Cluster'
+        required: false
+        default: OCP3-SDC
+        options:
+        - OCP3-270
+        - OCP3-SDC
+    DEPLOYMENT_NAMESPACE:
+        description: 'Deployment namespace'
+        required: true
+        default: 'experience-layer-zambia-uat'
+
+
+  push:
+    # Edit to the branch(es) you want to build and deploy on each push.
+    branches: [ "dev" ]
+
+jobs: 
+  name: Build and deploy to OpenShift
+    #runs-on: github-arc-runners
+  runs-on: github-arc-runners
+  environment: ${{ github.event.inputs.OCP_CLUSTER }}
+
+  outputs:
+      ROUTE: ${{ steps.deploy-and-expose.outputs.route }}
+      SELECTOR: ${{ steps.deploy-and-expose.outputs.selector }}
+  steps:
+    - name: Check out repository
+      uses: actions/checkout@v4
+      with:
+        repository: absa-group/cash-out-management-eapi     # Replace with actual owner/repo
+        ref: feature/cashout-redemption
+        path: exp-layer-devops                   # Branch or tag to checkout
+        token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+
+    - name: Install oc
+      uses: redhat-actions/openshift-tools-installer@v1
+      with:
+        oc: 4
+
+    # https://github.com/redhat-actions/oc-login#readme
+    - name: Log in to OpenShift
+      uses: redhat-actions/oc-login@v1
+      with:
+        openshift_server_url: https://openshift-webprd-roa.intra.absa.co.za
+        openshift_token: ${{ secrets.OCP_LOGIN_TOKEN }}
+        insecure_skip_tls_verify: true
+        namespace: ${{ inputs.DEPLOYMENT_NAMESPACE }}
+        run:
+           oc project experience-layer-zambia-uat
+         
+    - name: Login to private registry
+      uses: docker/login-action@v1
+      with:
+            registry: ${{ secrets.REGISTRY_URL }}
+            username: ${{ secrets.REGISTRY_USERNAME }}
+            password: ${{ secrets.REGISTRY_PASSWORD }}
+  
+    - name: tag, and push image to opeshfit registry
+      env:
+            OPENSHIFT_REGISTRY_ADDRESS: https://registry-console-default.roaprd-openshift.intra.absa.co.za/registry#/images/experience-layer-zambia-dev
+            IMAGE_TAG: latest
+      run: |
+            docker build -t "${{ OPENSHIFT_REGISTRY_ADDRESS }}/${{ inputs.DEPLOYMENT_NAMESPACE }}/uat:$IMAGE_TAG"
+            docker push "${{ OPENSHIFT_REGISTRY_ADDRESS }}:$IMAGE_TAG"
+
+     - name: Set up OpenShift CLI
+       uses: redhat-actions/oc-login@v1
+       with:
+              openshift_server_url: ${{ secrets.OPENSHIFT_SERVER_URL }}
+              openshift_token: ${{ secrets.OPENSHIFT_TOKEN }}
+          
+
+
+
+
