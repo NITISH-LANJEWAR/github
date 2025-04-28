@@ -1,0 +1,60 @@
+name: Promote to UAT
+
+on:
+  workflow_dispatch:
+
+env:
+  APP_NAME: my-app               # Change to your app name
+  IMAGE_TAG: latest
+  SELECTOR: app=my-app           # Label used on OpenShift resources
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v3
+
+      - name: Set up oc CLI
+        run: |
+          curl -LO https://mirror.openshift.com/pub/openshift-v3/clients/3.11.0/linux/oc.tar.gz
+          tar -xzf oc.tar.gz
+          chmod +x oc
+          sudo mv oc /usr/local/bin/oc
+
+      - name: Login to OpenShift
+        env:
+          OPENSHIFT_SERVER: ${{ secrets.OPENSHIFT_SERVER }}
+          OPENSHIFT_TOKEN: ${{ secrets.OPENSHIFT_TOKEN }}
+        run: |
+          oc login "$OPENSHIFT_SERVER" --token="$OPENSHIFT_TOKEN" --insecure-skip-tls-verify
+
+      - name: Promote image from dev to uat
+        run: |
+          oc project dev
+          oc tag ${APP_NAME}:${IMAGE_TAG} uat/${APP_NAME}:${IMAGE_TAG}
+
+      - name: Export and apply DeploymentConfig to UAT
+        run: |
+          oc project dev
+          oc export dc/${APP_NAME} --as-template=${APP_NAME}-template -o yaml > ${APP_NAME}-template.yaml
+
+          oc project uat
+          oc process -f ${APP_NAME}-template.yaml | oc apply -f -
+
+      - name: Sync service and route
+        run: |
+          RESOURCES="svc route"
+          for r in $RESOURCES; do
+            oc project dev
+            oc export $r -l ${SELECTOR} -o yaml > ${r}.yaml || continue
+
+            oc project uat
+            oc apply -f ${r}.yaml || continue
+          done
+
+      - name: Verify rollout status
+        run: |
+          oc project uat
+          oc rollout status dc/${APP_NAME} --watch=true || echo "Rollout check failed or timed out"
