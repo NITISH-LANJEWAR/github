@@ -1,0 +1,52 @@
+name: Promote to UAT
+
+on:
+  workflow_dispatch:
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v3
+
+      - name: Set up oc CLI
+        run: |
+          curl -LO https://mirror.openshift.com/pub/openshift-v3/clients/3.11.0/linux/oc.tar.gz
+          tar -xzf oc.tar.gz
+          sudo mv oc /usr/local/bin/
+
+      - name: Login to OpenShift
+        env:
+          OPENSHIFT_SERVER: ${{ secrets.OPENSHIFT_SERVER }}
+          OPENSHIFT_TOKEN: ${{ secrets.OPENSHIFT_TOKEN }}
+        run: |
+          oc login $OPENSHIFT_SERVER --token=$OPENSHIFT_TOKEN --insecure-skip-tls-verify
+
+      - name: Tag image from dev to uat
+        run: |
+          IMAGE_STREAM_NAME=my-app
+          IMAGE_TAG=latest
+          oc project dev
+          oc tag ${IMAGE_STREAM_NAME}:${IMAGE_TAG} uat/${IMAGE_STREAM_NAME}:${IMAGE_TAG}
+
+      - name: Export and apply deployment config to UAT
+        run: |
+          APP_NAME=my-app
+          oc project dev
+          oc export dc/${APP_NAME} --as-template=${APP_NAME}-template -o yaml > ${APP_NAME}-template.yaml
+          
+          oc project uat
+          oc process -f ${APP_NAME}-template.yaml | oc apply -f -
+
+      - name: Sync service and route (optional)
+        run: |
+          RESOURCES="svc route"
+          for r in $RESOURCES; do
+            oc project dev
+            oc export $r -l app=my-app -o yaml > ${r}.yaml
+
+            oc project uat
+            oc apply -f ${r}.yaml
+          done
