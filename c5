@@ -1,0 +1,14 @@
+curl -k 'https://amol-datagrid-service-amol-datagrid-preprod.amol-api.roanprd-openshift.intra.absa.co.za/v1/amol-datagrid-service/putAll' \
+-H'Content-Type: application/json' \
+--data ' 
+{
+    "cacheName": "walletEboxPaymentTypesCache",
+    "keys": {
+        "SC.IR.DWALLET.SC.IR.DWALLET.LOCALPENFEE": "LOCALPENFEE",
+        "SC.IR.DWALLET.SC.IR.DWALLET.LOCALPENFEER": "LOCALPENFEER",
+        "SC.IR.DWALLET.SC.IR.DWALLET.LOCALFEEWOFF": "LOCALFEEWOFF",
+        "SC.IR.DWALLET.SC.IR.DWALLET.LOCALFEEWOFFR": "LOCALFEEWOFFR",
+        "SC.IR.DWALLET.SC.IR.DWALLET.LOCALINTERESTFEE": "LOCALINTERESTFEE",
+        "SC.IR.DWALLET.SC.IR.DWALLET.LOCALINTERESTFEER": "LOCALINTERESTFEER"
+    }
+}'
